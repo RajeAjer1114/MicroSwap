@@ -16,6 +16,8 @@ import {
   ChevronRight,
   ChevronLeft,
   SlidersHorizontal,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import {
   AppSettings,
@@ -43,6 +45,82 @@ import {
 } from "../api";
 
 export const MAX_WALLPAPERS = 30;
+
+// 100% Offline, Zero-Latency Web Audio Tactile Synthesizer
+let sharedAudioCtx: AudioContext | null = null;
+function getAudioCtx(): AudioContext | null {
+  if (typeof window === "undefined") return null;
+  if (!sharedAudioCtx) {
+    const Ctx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (Ctx) {
+      sharedAudioCtx = new Ctx();
+    }
+  }
+  if (sharedAudioCtx && sharedAudioCtx.state === "suspended") {
+    sharedAudioCtx.resume().catch(() => {});
+  }
+  return sharedAudioCtx;
+}
+
+function playTactileTick(slotIndex: number, totalSlots: number) {
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  try {
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const filter = ctx.createBiquadFilter();
+    const gain = ctx.createGain();
+
+    // Subtle pitch shift across the wave (215Hz -> 295Hz) dropping to 72Hz in 12ms
+    const startFreq = 215 + (slotIndex / Math.max(1, totalSlots)) * 80;
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(startFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(72, now + 0.012);
+
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(920, now);
+
+    gain.gain.setValueAtTime(0.06, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.013);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.014);
+  } catch {
+    // Ignore audio context errors before user gesture
+  }
+}
+
+function playTactileApply() {
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  try {
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(135, now);
+    osc.frequency.exponentialRampToValueAtTime(48, now + 0.065);
+
+    gain.gain.setValueAtTime(0.09, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.07);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.072);
+  } catch {
+    // Ignore audio context errors
+  }
+}
 
 interface QuickSwitcherProps {
   wallpapers: Wallpaper[];
@@ -400,7 +478,10 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
         setShowFitPopover(false);
         setContextMenu(null);
 
-        // 1. Start the selected GPU apply animation immediately
+        // 1. Start the selected GPU apply animation + tactile confirmation sound immediately
+        if (settings.soundEnabled !== false) {
+          playTactileApply();
+        }
         setApplyPhase("portal");
 
         // 2. Kick off the background OS wallpaper swap mid-animation so Windows finishes decoding
@@ -425,6 +506,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       applying,
       currentFitMode,
       settings.applyAnimation,
+      settings.soundEnabled,
       onRefresh,
       handleClose,
       handleAddFiles,
@@ -563,6 +645,20 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     [draggingId, didDragRef]
   );
 
+  // Play ultra-low-latency mechanical tick whenever the selected slice changes
+  const prevSelectedIdxRef = React.useRef<number | null>(null);
+  useEffect(() => {
+    if (
+      prevSelectedIdxRef.current !== null &&
+      prevSelectedIdxRef.current !== selectedIndex
+    ) {
+      if (settings.soundEnabled !== false) {
+        playTactileTick(selectedIndex, carouselItems.length);
+      }
+    }
+    prevSelectedIdxRef.current = selectedIndex;
+  }, [selectedIndex, carouselItems.length, settings.soundEnabled]);
+
   // Keyboard navigation & shortcuts inside Carousel
   useEffect(() => {
     const onKeyDown = async (e: KeyboardEvent) => {
@@ -674,6 +770,21 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "o") {
         e.preventDefault();
         await handleAddFiles();
+      } else if (
+        /^[0-9]$/.test(e.key) &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        !e.metaKey &&
+        carouselItems.length > 0
+      ) {
+        e.preventDefault();
+        const slotIndex = e.key === "0" ? 9 : parseInt(e.key, 10) - 1;
+        const targetIdx = Math.min(slotIndex, carouselItems.length - 1);
+        if (selectedIndex === targetIdx) {
+          await handleActivateSelected();
+        } else {
+          setSelectedIndex(targetIdx);
+        }
       }
     };
 
@@ -681,6 +792,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [
     carouselItems.length,
+    selectedIndex,
     selectedItem,
     selectedWallpaper,
     handleActivateSelected,
@@ -1282,9 +1394,44 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
 
               {/* Apply Animation Style Selector (4 options) */}
               <div className="space-y-1.5">
-                <label className="text-[11px] text-white/70 block">
-                  Apply Animation
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] text-white/70">
+                    Apply Animation
+                  </label>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const nextSound = settings.soundEnabled === false;
+                      await saveSettings({
+                        ...settings,
+                        soundEnabled: nextSound,
+                      });
+                      onRefresh();
+                      if (nextSound) {
+                        playTactileTick(selectedIndex, carouselItems.length);
+                      }
+                      showToast(nextSound ? "Sound: On" : "Sound: Muted");
+                    }}
+                    title="Toggle Tactile UI Sound"
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium transition ${
+                      settings.soundEnabled !== false
+                        ? "bg-white/15 text-white"
+                        : "bg-[#111114] text-white/45 hover:text-white/80"
+                    }`}
+                  >
+                    {settings.soundEnabled !== false ? (
+                      <>
+                        <Volume2 className="w-3 h-3" />
+                        Sound On
+                      </>
+                    ) : (
+                      <>
+                        <VolumeX className="w-3 h-3" />
+                        Muted
+                      </>
+                    )}
+                  </button>
+                </div>
                 <div className="grid grid-cols-4 gap-1">
                   {(
                     [

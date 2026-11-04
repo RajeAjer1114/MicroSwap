@@ -15,6 +15,7 @@ export const App: React.FC = () => {
     instantApplyShuffle: false,
     expandCenterOnHover: false,
     applyAnimation: "cascade",
+    soundEnabled: true,
   });
 
   const loadData = useCallback(async () => {

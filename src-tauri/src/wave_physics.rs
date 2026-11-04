@@ -386,6 +386,377 @@ impl SpringSolver {
     }
 }
 
+/// Supported exit choreography modes when applying a wallpaper from the wave carousel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ApplyAnimationStyle {
+    Cascade,
+    Accordion,
+    Laser,
+    Shutter,
+}
+
+impl ApplyAnimationStyle {
+    pub fn from_key(key: &str) -> Self {
+        match key.trim().to_ascii_lowercase().as_str() {
+            "accordion" | "fold" => Self::Accordion,
+            "laser" => Self::Laser,
+            "shutter" => Self::Shutter,
+            _ => Self::Cascade,
+        }
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Cascade => "Wave",
+            Self::Accordion => "Fold",
+            Self::Laser => "Laser",
+            Self::Shutter => "Shutter",
+        }
+    }
+
+    pub fn total_duration_ms(&self) -> u32 {
+        match self {
+            Self::Cascade => 300,
+            Self::Accordion => 290,
+            Self::Laser => 280,
+            Self::Shutter => 280,
+        }
+    }
+
+    pub fn os_handoff_delay_ms(&self) -> u32 {
+        90
+    }
+}
+
+/// Computed per-slice exit transform target for the 4 apply animation styles.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SliceExitTrajectory {
+    pub slot_index: usize,
+    pub offset: i32,
+    pub is_selected: bool,
+    pub stagger_delay_ms: u32,
+    pub duration_ms: u32,
+    pub target_translate_x: f64,
+    pub target_translate_y: f64,
+    pub target_skew_x: f64,
+    pub target_skew_y: f64,
+    pub target_rotate_z: f64,
+    pub target_scale_x: f64,
+    pub target_scale_y: f64,
+    pub target_opacity: f64,
+    pub target_brightness: f64,
+    pub css_transform: String,
+    pub css_transition: String,
+}
+
+/// Computes deterministic exit trajectories for every slice in the carousel
+/// when a wallpaper transition is triggered.
+#[derive(Debug, Clone)]
+pub struct ApplyChoreographyEngine {
+    pub style: ApplyAnimationStyle,
+    pub wave_profile: WaveProfile,
+}
+
+impl ApplyChoreographyEngine {
+    pub fn new(style: ApplyAnimationStyle) -> Self {
+        Self {
+            style,
+            wave_profile: WaveProfile::default(),
+        }
+    }
+
+    pub fn compute_slice_exit(
+        &self,
+        slot_index: usize,
+        selected_index: usize,
+        expanded_center: bool,
+    ) -> SliceExitTrajectory {
+        let offset = (slot_index as i32) - (selected_index as i32);
+        let abs_offset = offset.unsigned_abs();
+        let is_selected = offset == 0;
+        let base = self
+            .wave_profile
+            .compute_slice(offset, expanded_center, false, None, false);
+
+        if is_selected {
+            let (tx, ty, sx, sy, rz, scx, scy, br) = match self.style {
+                ApplyAnimationStyle::Cascade => (0.0, 18.0, -2.0, -1.0, -0.4, 0.96, 0.96, 1.05),
+                ApplyAnimationStyle::Accordion => (0.0, 0.0, 0.0, -18.0, 0.0, 0.03, 0.92, 1.40),
+                ApplyAnimationStyle::Laser => (0.0, -14.0, 0.0, 0.0, 0.0, 0.01, 1.65, 2.50),
+                ApplyAnimationStyle::Shutter => (0.0, -14.0, 0.0, 0.0, 0.0, 1.04, 0.04, 1.50),
+            };
+            let duration_ms = self.style.total_duration_ms();
+            let css_transform = format!(
+                "translateX({:.1}px) translateY({:.1}px) skewX({:.2}deg) skewY({:.2}deg) rotateZ({:.2}deg) scaleX({:.3}) scaleY({:.3})",
+                tx, ty, sx, sy, rz, scx, scy
+            );
+            let css_transition = format!(
+                "transform {}ms cubic-bezier(0.22, 1, 0.36, 1), opacity {}ms ease, filter {}ms ease",
+                duration_ms, duration_ms, duration_ms
+            );
+
+            return SliceExitTrajectory {
+                slot_index,
+                offset,
+                is_selected: true,
+                stagger_delay_ms: 0,
+                duration_ms,
+                target_translate_x: tx,
+                target_translate_y: ty,
+                target_skew_x: sx,
+                target_skew_y: sy,
+                target_rotate_z: rz,
+                target_scale_x: scx,
+                target_scale_y: scy,
+                target_opacity: 0.0,
+                target_brightness: br,
+                css_transform,
+                css_transition,
+            };
+        }
+
+        let stagger_delay_ms = match self.style {
+            ApplyAnimationStyle::Cascade => (abs_offset * 22).min(110),
+            ApplyAnimationStyle::Accordion => (abs_offset * 16).min(80),
+            ApplyAnimationStyle::Laser => (abs_offset * 14).min(70),
+            ApplyAnimationStyle::Shutter => (abs_offset * 12).min(60),
+        };
+
+        let (tx, ty, sx, sy, rz, scx, scy, br) = match self.style {
+            ApplyAnimationStyle::Cascade => {
+                let domino_tilt = if offset < 0 { -9.0 } else { 9.0 };
+                (
+                    0.0,
+                    base.translate_y + 135.0,
+                    base.skew_x,
+                    base.skew_y,
+                    base.rotate_z + domino_tilt,
+                    base.scale * 0.68,
+                    base.scale * 0.68,
+                    base.brightness,
+                )
+            }
+            ApplyAnimationStyle::Accordion => {
+                let pleat_dir = if abs_offset % 2 == 0 { 22.0 } else { -22.0 };
+                let pull_in_x = if offset < 0 { 28.0 } else { -28.0 };
+                (
+                    pull_in_x,
+                    base.translate_y,
+                    0.0,
+                    pleat_dir,
+                    0.0,
+                    0.05,
+                    base.scale * 0.92,
+                    base.brightness * 1.15,
+                )
+            }
+            ApplyAnimationStyle::Laser => (
+                0.0,
+                base.translate_y - 12.0,
+                0.0,
+                0.0,
+                0.0,
+                0.03,
+                base.scale * 1.45,
+                2.20,
+            ),
+            ApplyAnimationStyle::Shutter => {
+                let zipper_dir = if slot_index % 2 == 0 { -210.0 } else { 210.0 };
+                (
+                    0.0,
+                    base.translate_y + zipper_dir,
+                    base.skew_x,
+                    base.skew_y,
+                    base.rotate_z,
+                    base.scale * 0.88,
+                    base.scale * 0.55,
+                    base.brightness,
+                )
+            }
+        };
+
+        let css_transform = format!(
+            "translateX({:.1}px) translateY({:.1}px) skewX({:.2}deg) skewY({:.2}deg) rotateZ({:.2}deg) scaleX({:.3}) scaleY({:.3})",
+            tx, ty, sx, sy, rz, scx, scy
+        );
+        let css_transition = format!(
+            "transform 210ms cubic-bezier(0.32, 0, 0.2, 1) {}ms, opacity 195ms ease {}ms, filter 180ms ease {}ms",
+            stagger_delay_ms, stagger_delay_ms, stagger_delay_ms
+        );
+
+        SliceExitTrajectory {
+            slot_index,
+            offset,
+            is_selected: false,
+            stagger_delay_ms,
+            duration_ms: 210,
+            target_translate_x: tx,
+            target_translate_y: ty,
+            target_skew_x: sx,
+            target_skew_y: sy,
+            target_rotate_z: rz,
+            target_scale_x: scx,
+            target_scale_y: scy,
+            target_opacity: 0.0,
+            target_brightness: br,
+            css_transform,
+            css_transition,
+        }
+    }
+
+    pub fn compute_batch(
+        &self,
+        total_slices: usize,
+        selected_index: usize,
+        expanded_center: bool,
+    ) -> Vec<SliceExitTrajectory> {
+        (0..total_slices)
+            .map(|idx| self.compute_slice_exit(idx, selected_index, expanded_center))
+            .collect()
+    }
+}
+
+/// Offline procedural acoustic synthesizer for generating ultra-low-latency
+/// mechanical detent clicks and sub-bass confirmation envelopes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TactileAcousticSynthesizer {
+    pub sample_rate: u32,
+    pub master_gain: f64,
+    pub lowpass_cutoff_hz: f64,
+}
+
+impl Default for TactileAcousticSynthesizer {
+    fn default() -> Self {
+        Self {
+            sample_rate: 48_000,
+            master_gain: 0.06,
+            lowpass_cutoff_hz: 920.0,
+        }
+    }
+}
+
+impl TactileAcousticSynthesizer {
+    /// Computes the starting pitch frequency in Hz for a given slot index across the wave.
+    pub fn tick_start_frequency_hz(&self, slot_index: usize, total_slots: usize) -> f64 {
+        let ratio = (slot_index as f64) / (total_slots.max(1) as f64);
+        215.0 + ratio * 80.0
+    }
+
+    /// Synthesizes a 14ms mono PCM waveform buffer (`f32` in `[-1.0, 1.0]`) for a mechanical scroll detent click.
+    pub fn synthesize_tick_pcm(&self, slot_index: usize, total_slots: usize) -> Vec<f32> {
+        let duration_sec = 0.014;
+        let num_samples = ((self.sample_rate as f64) * duration_sec).round() as usize;
+        let f_start = self.tick_start_frequency_hz(slot_index, total_slots);
+        let f_end = 72.0;
+
+        let mut raw = Vec::with_capacity(num_samples);
+        let mut phase = 0.0_f64;
+
+        for i in 0..num_samples {
+            let t = (i as f64) / (self.sample_rate as f64);
+            let frac = (t / duration_sec).clamp(0.0, 1.0);
+            let freq = f_start * (f_end / f_start).powf(frac);
+            phase += freq / (self.sample_rate as f64);
+            let tri = 2.0 * (2.0 * (phase - (phase + 0.5).floor())).abs() - 1.0;
+            let env = self.master_gain * (0.0001_f64 / self.master_gain).powf(frac);
+            raw.push((tri * env) as f32);
+        }
+
+        self.apply_single_pole_lowpass(&raw, self.lowpass_cutoff_hz)
+    }
+
+    /// Synthesizes a 70ms sub-bass confirmation pulse (`135 Hz -> 48 Hz`) when applying a wallpaper.
+    pub fn synthesize_apply_pcm(&self) -> Vec<f32> {
+        let duration_sec = 0.070;
+        let num_samples = ((self.sample_rate as f64) * duration_sec).round() as usize;
+        let f_start = 135.0_f64;
+        let f_end = 48.0_f64;
+        let peak_gain = 0.09_f64;
+
+        let mut out = Vec::with_capacity(num_samples);
+        let mut phase = 0.0_f64;
+
+        for i in 0..num_samples {
+            let t = (i as f64) / (self.sample_rate as f64);
+            let frac = (t / duration_sec).clamp(0.0, 1.0);
+            let freq = f_start * (f_end / f_start).powf(frac);
+            phase += freq / (self.sample_rate as f64);
+            let sample = (phase * std::f64::consts::TAU).sin();
+            let env = peak_gain * (0.0001_f64 / peak_gain).powf(frac);
+            out.push((sample * env) as f32);
+        }
+
+        out
+    }
+
+    fn apply_single_pole_lowpass(&self, input: &[f32], cutoff_hz: f64) -> Vec<f32> {
+        if input.is_empty() {
+            return Vec::new();
+        }
+        let dt = 1.0 / (self.sample_rate as f64);
+        let rc = 1.0 / (std::f64::consts::TAU * cutoff_hz.max(20.0));
+        let alpha = (dt / (rc + dt)) as f32;
+
+        let mut output = Vec::with_capacity(input.len());
+        let mut prev = input[0];
+        output.push(prev);
+
+        for &x in &input[1..] {
+            let y = prev + alpha * (x - prev);
+            output.push(y);
+            prev = y;
+        }
+        output
+    }
+}
+
+/// Perceptual Oklab color & luminance analyzer for wallpaper slices.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OklabColor {
+    pub l: f64,
+    pub a: f64,
+    pub b: f64,
+}
+
+impl OklabColor {
+    fn srgb_to_linear(channel: u8) -> f64 {
+        let c = (channel as f64) / 255.0;
+        if c <= 0.04045 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    }
+
+    pub fn from_rgb(r: u8, g: u8, b: u8) -> Self {
+        let lr = Self::srgb_to_linear(r);
+        let lg = Self::srgb_to_linear(g);
+        let lb = Self::srgb_to_linear(b);
+
+        let l = (0.4122214708 * lr + 0.5363325363 * lg + 0.0514459929 * lb).cbrt();
+        let m = (0.2119034982 * lr + 0.6806995451 * lg + 0.1073969566 * lb).cbrt();
+        let s = (0.0883024619 * lr + 0.2817188376 * lg + 0.6299787005 * lb).cbrt();
+
+        Self {
+            l: 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+            a: 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+            b: 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
+        }
+    }
+
+    pub fn chroma(&self) -> f64 {
+        (self.a * self.a + self.b * self.b).sqrt()
+    }
+
+    pub fn hue_degrees(&self) -> f64 {
+        self.b.atan2(self.a).to_degrees().rem_euclid(360.0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -406,5 +777,34 @@ mod tests {
         let end = spring.sample(2.0);
         assert!((start - 0.0).abs() < 1e-5);
         assert!((end - 1.0).abs() < 1e-2);
+    }
+
+    #[test]
+    fn test_apply_choreography_styles() {
+        for key in ["cascade", "accordion", "laser", "shutter"] {
+            let style = ApplyAnimationStyle::from_key(key);
+            let engine = ApplyChoreographyEngine::new(style);
+            let batch = engine.compute_batch(8, 3, false);
+            assert_eq!(batch.len(), 8);
+            assert!(batch[3].is_selected);
+            assert_eq!(batch[3].stagger_delay_ms, 0);
+        }
+    }
+
+    #[test]
+    fn test_tactile_acoustic_synthesis() {
+        let synth = TactileAcousticSynthesizer::default();
+        let tick = synth.synthesize_tick_pcm(2, 10);
+        let apply = synth.synthesize_apply_pcm();
+        assert!(!tick.is_empty());
+        assert!(!apply.is_empty());
+    }
+
+    #[test]
+    fn test_oklab_luminance_bounds() {
+        let black = OklabColor::from_rgb(0, 0, 0);
+        let white = OklabColor::from_rgb(255, 255, 255);
+        assert!(black.l < 0.01);
+        assert!((white.l - 1.0).abs() < 0.01);
     }
 }

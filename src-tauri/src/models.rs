@@ -36,6 +36,10 @@ fn default_apply_animation() -> String {
     "cascade".to_string()
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
@@ -48,6 +52,8 @@ pub struct AppSettings {
     pub expand_center_on_hover: bool,
     #[serde(default = "default_apply_animation")]
     pub apply_animation: String, // "cascade" | "accordion" | "laser" | "shutter"
+    #[serde(default = "default_true")]
+    pub sound_enabled: bool,
 }
 
 impl Default for AppSettings {
@@ -61,6 +67,7 @@ impl Default for AppSettings {
             instant_apply_shuffle: false,
             expand_center_on_hover: false,
             apply_animation: default_apply_animation(),
+            sound_enabled: true,
         }
     }
 }

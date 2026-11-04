@@ -38,6 +38,7 @@ export interface AppSettings {
   instantApplyShuffle: boolean;
   expandCenterOnHover: boolean;
   applyAnimation?: ApplyAnimation;
+  soundEnabled?: boolean;
 }
 
 export interface HistoryEntry {
