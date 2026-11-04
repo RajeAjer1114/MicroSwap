@@ -36,61 +36,101 @@ body,
   background: rgba(255, 255, 255, 0.25);
 }
 
-/* Pure GPU-composited continuous Portal Unshear, Expand & Dissolve */
-@keyframes portalCenterBloom {
+/* 1. Wave (Cascading Domino Collapse) — Selected Slice Lift */
+@keyframes selectedSliceWaveLift {
   0% {
     transform: translateY(-10px) skewX(-4.5deg) skewY(-2.2deg) rotateZ(-1.2deg) scale(1.045);
     opacity: 1;
-    filter: brightness(1.14) blur(0px);
+    filter: brightness(1.12);
   }
-  38% {
-    transform: translateY(0px) skewX(0deg) skewY(0deg) rotateZ(0deg) scaleX(4.8) scaleY(1.22);
-    opacity: 0.96;
-    filter: brightness(1.08) blur(0px);
+  32% {
+    transform: translateY(-26px) skewX(-3.2deg) skewY(-1.5deg) rotateZ(-0.8deg) scale(1.09);
+    opacity: 1;
+    filter: brightness(1.24);
   }
   100% {
-    transform: translateY(0px) skewX(0deg) skewY(0deg) rotateZ(0deg) scaleX(7.6) scaleY(1.38);
+    transform: translateY(18px) skewX(-2deg) skewY(-1deg) rotateZ(-0.4deg) scale(0.96);
     opacity: 0;
-    filter: brightness(1.02) blur(14px);
+    filter: brightness(1.05);
   }
 }
 
-@keyframes portalInnerImgCounter {
+/* 2. Accordion (Origami Shear & Fold) — Selected Slice Pleat */
+@keyframes selectedSliceAccordion {
   0% {
-    transform: skewX(3.15deg) scale(1.16);
+    transform: translateY(-10px) skewX(-4.5deg) skewY(-2.2deg) rotateZ(-1.2deg) scale(1.045);
+    opacity: 1;
+    filter: brightness(1.12);
   }
   35% {
-    transform: skewX(0deg) scale(1.02);
+    transform: translateY(-6px) skewX(0deg) skewY(14deg) rotateZ(0deg) scaleX(0.55) scaleY(1.08);
+    opacity: 0.95;
+    filter: brightness(1.28);
   }
   100% {
-    transform: skewX(0deg) scale(1);
-  }
-}
-
-@keyframes portalNeighborExit {
-  0% {
-    opacity: 0.9;
-  }
-  100% {
-    transform: translateY(85px) skewX(-4.5deg) scale(0.45);
+    transform: translateY(0px) skewX(0deg) skewY(-18deg) rotateZ(0deg) scaleX(0.03) scaleY(0.92);
     opacity: 0;
-    filter: blur(8px);
+    filter: brightness(1.4);
   }
 }
 
-.portal-center-anim {
-  will-change: transform, opacity, filter;
-  animation: portalCenterBloom 270ms cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
-  clip-path: polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%) !important;
-  transition: clip-path 140ms cubic-bezier(0.16, 1, 0.3, 1) !important;
+/* 3. Laser Slit (High-Brightness Vertical Beam Collapse) */
+@keyframes selectedSliceLaser {
+  0% {
+    transform: translateY(-10px) skewX(-4.5deg) skewY(-2.2deg) rotateZ(-1.2deg) scale(1.045);
+    opacity: 1;
+    filter: brightness(1.14);
+  }
+  42% {
+    transform: translateY(-14px) skewX(0deg) skewY(0deg) rotateZ(0deg) scaleX(0.06) scaleY(1.42);
+    opacity: 1;
+    filter: brightness(2.15);
+  }
+  100% {
+    transform: translateY(-14px) skewX(0deg) skewY(0deg) rotateZ(0deg) scaleX(0.01) scaleY(1.65);
+    opacity: 0;
+    filter: brightness(2.5);
+  }
 }
 
-.portal-center-img-anim {
-  will-change: transform;
-  animation: portalInnerImgCounter 270ms cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+/* 4. Shutter Split (Vertical Zipper / Camera Shutter) */
+@keyframes selectedSliceShutter {
+  0% {
+    transform: translateY(-10px) skewX(-4.5deg) skewY(-2.2deg) rotateZ(-1.2deg) scale(1.045);
+    opacity: 1;
+    filter: brightness(1.14);
+    clip-path: polygon(0% 4%, 100% 0%, 100% 96%, 0% 100%);
+  }
+  30% {
+    transform: translateY(-14px) skewX(-2deg) skewY(-1deg) rotateZ(-0.5deg) scale(1.08);
+    opacity: 1;
+    filter: brightness(1.3);
+    clip-path: polygon(0% 18%, 100% 15%, 100% 82%, 0% 85%);
+  }
+  100% {
+    transform: translateY(-14px) skewX(0deg) skewY(0deg) rotateZ(0deg) scaleY(0.04) scaleX(1.04);
+    opacity: 0;
+    filter: brightness(1.5);
+    clip-path: polygon(0% 49%, 100% 49%, 100% 51%, 0% 51%);
+  }
 }
 
-.portal-neighbor-anim {
+.apply-center-cascade {
   will-change: transform, opacity, filter;
-  animation: portalNeighborExit 190ms cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
+  animation: selectedSliceWaveLift 300ms cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
+}
+
+.apply-center-accordion {
+  will-change: transform, opacity, filter;
+  animation: selectedSliceAccordion 290ms cubic-bezier(0.32, 0, 0.2, 1) forwards !important;
+}
+
+.apply-center-laser {
+  will-change: transform, opacity, filter;
+  animation: selectedSliceLaser 280ms cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+}
+
+.apply-center-shutter {
+  will-change: transform, opacity, filter, clip-path;
+  animation: selectedSliceShutter 280ms cubic-bezier(0.32, 0, 0.2, 1) forwards !important;
 }

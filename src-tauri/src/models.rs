@@ -32,6 +32,10 @@ pub struct Collection {
     pub is_system: bool,
 }
 
+fn default_apply_animation() -> String {
+    "cascade".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
@@ -42,6 +46,8 @@ pub struct AppSettings {
     pub history_limit: usize,
     pub instant_apply_shuffle: bool,
     pub expand_center_on_hover: bool,
+    #[serde(default = "default_apply_animation")]
+    pub apply_animation: String, // "cascade" | "accordion" | "laser" | "shutter"
 }
 
 impl Default for AppSettings {
@@ -54,6 +60,7 @@ impl Default for AppSettings {
             history_limit: 50,
             instant_apply_shuffle: false,
             expand_center_on_hover: false,
+            apply_animation: default_apply_animation(),
         }
     }
 }

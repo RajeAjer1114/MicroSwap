@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import {
   AppSettings,
+  ApplyAnimation,
   Collection,
   FitMode,
   ImportSummary,
@@ -399,16 +400,16 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
         setShowFitPopover(false);
         setContextMenu(null);
 
-        // 1. Start the GPU portal unshear & fade-out animation immediately
+        // 1. Start the selected GPU apply animation immediately
         setApplyPhase("portal");
 
-        // 2. Kick off the background OS wallpaper swap mid-bloom so Windows finishes decoding
-        //    right as the portal dissolves, creating a seamless jump with zero dead air
+        // 2. Kick off the background OS wallpaper swap mid-animation so Windows finishes decoding
+        //    right as the animation dissolves
         await new Promise((resolve) => setTimeout(resolve, 90));
         const applyPromise = applyWallpaper(wp.id, modeToUse);
 
-        // 3. Hide the switcher window right as the 260ms portal dissolve completes
-        await new Promise((resolve) => setTimeout(resolve, 170));
+        // 3. Hide the switcher window right as the dissolve completes
+        await new Promise((resolve) => setTimeout(resolve, 200));
         await handleClose();
         await applyPromise;
         onRefresh();
@@ -423,6 +424,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       selectedItem,
       applying,
       currentFitMode,
+      settings.applyAnimation,
       onRefresh,
       handleClose,
       handleAddFiles,
@@ -892,13 +894,66 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
             );
 
             const isApplyingPortal = applyPhase !== "idle";
-            const sliceAnimClass = isApplyingPortal
-              ? isSelected
-                ? "portal-center-anim"
-                : "portal-neighbor-anim"
-              : "";
+            const rawAnim = settings.applyAnimation;
+            const animMode: ApplyAnimation =
+              rawAnim === "accordion" ||
+              rawAnim === "laser" ||
+              rawAnim === "shutter"
+                ? rawAnim
+                : "cascade";
 
-            const sliceTransform = `translateY(${translateY}px) skewX(${skewX}deg) skewY(${skewY}deg) rotateZ(${rotateZ}deg) scale(${scale})`;
+            const sliceAnimClass =
+              isApplyingPortal && isSelected ? `apply-center-${animMode}` : "";
+
+            // Neighbor slice exit behavior tailored to each of the 4 apply animation styles:
+            // 1. cascade (Wave): outward domino tilt & drop
+            // 2. accordion (Accordion): alternating vertical shear & horizontal pleat fold
+            // 3. laser (Laser Slit): razor-thin vertical beam stretch & high-brightness snap
+            // 4. shutter (Shutter): alternating up/down vertical zipper split
+            const staggerDelayMs =
+              animMode === "cascade"
+                ? Math.min(Math.abs(offset) * 22, 110)
+                : animMode === "laser"
+                ? Math.min(Math.abs(offset) * 14, 70)
+                : animMode === "accordion"
+                ? Math.min(Math.abs(offset) * 16, 80)
+                : Math.min(Math.abs(offset) * 12, 60);
+
+            let sliceTransform = `translateY(${translateY}px) skewX(${skewX}deg) skewY(${skewY}deg) rotateZ(${rotateZ}deg) scale(${scale})`;
+            let sliceBrightness = brightness;
+
+            if (isApplyingPortal && !isSelected) {
+              if (animMode === "cascade") {
+                const dominoTilt = offset < 0 ? -9 : 9;
+                sliceTransform = `translateY(${translateY + 135}px) skewX(${skewX}deg) skewY(${skewY}deg) rotateZ(${
+                  rotateZ + dominoTilt
+                }deg) scale(${scale * 0.68})`;
+              } else if (animMode === "accordion") {
+                const pleatDir = Math.abs(offset) % 2 === 0 ? 22 : -22;
+                const pullInX = offset < 0 ? 28 : -28;
+                sliceTransform = `translateX(${pullInX}px) translateY(${translateY}px) skewX(0deg) skewY(${pleatDir}deg) rotateZ(0deg) scaleX(0.05) scaleY(${
+                  scale * 0.92
+                })`;
+              } else if (animMode === "laser") {
+                sliceTransform = `translateY(${translateY - 12}px) skewX(0deg) skewY(0deg) rotateZ(0deg) scaleX(0.03) scaleY(${
+                  scale * 1.45
+                })`;
+                sliceBrightness = 2.2;
+              } else if (animMode === "shutter") {
+                const zipperDir = idx % 2 === 0 ? -210 : 210;
+                sliceTransform = `translateY(${
+                  translateY + zipperDir
+                }px) skewX(${skewX}deg) skewY(${skewY}deg) rotateZ(${rotateZ}deg) scaleX(${
+                  scale * 0.88
+                }) scaleY(${scale * 0.55})`;
+              }
+            }
+
+            const sliceOpacity = isApplyingPortal && !isSelected ? 0 : opacity;
+            const sliceTransition =
+              isApplyingPortal && !isSelected
+                ? `transform 210ms cubic-bezier(0.32, 0, 0.2, 1) ${staggerDelayMs}ms, opacity 195ms ease ${staggerDelayMs}ms, filter 180ms ease ${staggerDelayMs}ms`
+                : bouncyTransition;
 
             // Render selectable "+ Add Wallpaper" slice right inside the wave (scales proportionally with slice width!)
             if (item.kind === "add") {
@@ -926,10 +981,10 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                   style={{
                     width: `${isSelected && expandedCenter ? 240 : width}px`,
                     height: `${height}px`,
-                    opacity,
+                    opacity: sliceOpacity,
                     clipPath,
                     transform: sliceTransform,
-                    transition: bouncyTransition,
+                    transition: sliceTransition,
                   }}
                   title={`Select with Arrow Keys and press Enter to Add Wallpapers (${wallpapers.length}/${MAX_WALLPAPERS}) • Right-click to Add Folder`}
                   className={`group relative shrink-0 overflow-hidden cursor-pointer select-none bg-white/[0.09] hover:bg-white/[0.16] backdrop-blur-2xl flex flex-col items-center justify-center text-white ${sliceAnimClass}`}
@@ -1008,11 +1063,11 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                 style={{
                   width: `${width}px`,
                   height: `${height}px`,
-                  opacity,
-                  filter: `brightness(${brightness})`,
+                  opacity: sliceOpacity,
+                  filter: `brightness(${sliceBrightness})`,
                   clipPath,
                   transform: sliceTransform,
-                  transition: bouncyTransition,
+                  transition: sliceTransition,
                 }}
                 className={`group relative shrink-0 overflow-hidden select-none ${
                   isBeingDragged
@@ -1052,11 +1107,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                         : {}),
                       transform: `skewX(${-skewX * 0.7}deg) scale(1.16)`,
                     }}
-                    className={`w-full h-full object-cover object-center transition-transform duration-500 ease-out group-hover:scale-125 ${
-                      isApplyingPortal && isSelected
-                        ? "portal-center-img-anim"
-                        : ""
-                    }`}
+                    className="w-full h-full object-cover object-center transition-transform duration-500 ease-out group-hover:scale-125"
                   />
                 )}
 
@@ -1226,6 +1277,52 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                       );
                     }
                   )}
+                </div>
+              </div>
+
+              {/* Apply Animation Style Selector (4 options) */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] text-white/70 block">
+                  Apply Animation
+                </label>
+                <div className="grid grid-cols-4 gap-1">
+                  {(
+                    [
+                      { id: "cascade", label: "Wave" },
+                      { id: "accordion", label: "Fold" },
+                      { id: "laser", label: "Laser" },
+                      { id: "shutter", label: "Shutter" },
+                    ] as { id: ApplyAnimation; label: string }[]
+                  ).map((opt) => {
+                    const activeAnim: ApplyAnimation =
+                      settings.applyAnimation === "accordion" ||
+                      settings.applyAnimation === "laser" ||
+                      settings.applyAnimation === "shutter"
+                        ? settings.applyAnimation
+                        : "cascade";
+                    const isActive = activeAnim === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={async () => {
+                          await saveSettings({
+                            ...settings,
+                            applyAnimation: opt.id,
+                          });
+                          onRefresh();
+                          showToast(`Animation: ${opt.label}`);
+                        }}
+                        className={`py-1.5 rounded-full text-[10px] font-semibold transition ${
+                          isActive
+                            ? "bg-white text-black"
+                            : "bg-[#111114] hover:bg-[#1a1a1f] text-white/65 hover:text-white"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 

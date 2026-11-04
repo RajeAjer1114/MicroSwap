@@ -14,6 +14,7 @@ export const App: React.FC = () => {
     historyLimit: 50,
     instantApplyShuffle: false,
     expandCenterOnHover: false,
+    applyAnimation: "cascade",
   });
 
   const loadData = useCallback(async () => {

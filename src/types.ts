@@ -1,5 +1,7 @@
 export type FitMode = "fill" | "fit" | "stretch" | "tile" | "center" | "span";
 
+export type ApplyAnimation = "cascade" | "accordion" | "laser" | "shutter";
+
 export interface Wallpaper {
   id: string;
   filePath: string;
@@ -35,6 +37,7 @@ export interface AppSettings {
   historyLimit: number;
   instantApplyShuffle: boolean;
   expandCenterOnHover: boolean;
+  applyAnimation?: ApplyAnimation;
 }
 
 export interface HistoryEntry {

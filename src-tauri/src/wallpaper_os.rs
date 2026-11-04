@@ -183,6 +183,8 @@ pub fn terminate_previous_instances(app_data_dir: &Path) {
                     let _ = std::process::Command::new("taskkill")
                         .args(["/F", "/PID", &old_pid.to_string(), "/T"])
                         .creation_flags(CREATE_NO_WINDOW)
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
                         .status();
                 }
             }
@@ -195,6 +197,8 @@ pub fn terminate_previous_instances(app_data_dir: &Path) {
                 let _ = std::process::Command::new("taskkill")
                     .args(["/F", "/FI", &filter, "/IM", exe_name, "/T"])
                     .creation_flags(CREATE_NO_WINDOW)
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
                     .status();
             }
         }
