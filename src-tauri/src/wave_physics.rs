@@ -123,6 +123,7 @@ pub struct ComputedSliceVisuals {
 }
 
 /// Wave profile table defining base heights and widths from center (`offset = 0`) outward.
+#[derive(Debug, Clone)]
 pub struct WaveProfile {
     pub heights: [f64; 10],
     pub widths: [f64; 10],
