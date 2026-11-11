@@ -1,0 +1,11 @@
+# Merge into your existing YASB config and replace the example paths.
+widgets:
+  wallpapers:
+    type: "yasb.wallpapers.WallpapersWidget"
+    options:
+      label: "Wallpapers"
+      image_path: 'C:\Wallpapers'
+      callbacks:
+        on_left: 'exec "C:\Apps\MicroSwap\MicroSwapLauncher.exe"'
+        on_middle: "do_nothing"
+        on_right: "change_wallpaper"
