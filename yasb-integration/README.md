@@ -1,5 +1,7 @@
 # MicroSwap launcher for YASB
 
+![MicroSwap wallpaper carousel](../assets/screenshot.png)
+
 Click the YASB Wallpapers widget to start MicroSwap or toggle the carousel if MicroSwap is already running. Right-click changes the wallpaper through YASB.
 
 ## Setup
